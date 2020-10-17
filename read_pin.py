@@ -49,6 +49,6 @@ def callback(arg):
         check_for_pattern(buffer)
 
 
-GPIO.add_event_detect(26, GPIO.RISING)
+GPIO.add_event_detect(26, GPIO.FALLING)
 GPIO.add_event_callback(26, callback)
 input()
