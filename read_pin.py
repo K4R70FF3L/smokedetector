@@ -1,6 +1,7 @@
 import RPi.GPIO as GPIO
 import time
 import argparse
+import requests
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(26, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -9,6 +10,7 @@ patterns = {'alarm': [0.5, 0.5, 0.5, 0.5, 0.5],
             'regular': [33.75, 33.75, 33.75]}
 PATTERN_TOLERANCE = 0.1
 MIN_PAUSE_BETWEEN_INTERRUPTS = 0.1
+HUB_URL = 'http://pihub.local/messages'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--debug', type=str2bool, nargs='?', const=True,
@@ -30,11 +32,13 @@ def str2bool(v):
 def alarm_callback():
     if args.debug:
         print('ALARM!!!')
+    requests.post(HUB_URL + '/smokedetector', data='alarm')
 
 
 def regular_callback():
     if args.debug:
         print('Batterie ist fast leer, bitte wechseln.')
+    requests.post(HUB_URL + '/smokedetector', data='ok')
 
 
 callbacks = {'alarm': alarm_callback, 'regular': regular_callback}
