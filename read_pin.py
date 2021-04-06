@@ -1,7 +1,11 @@
 import RPi.GPIO as GPIO
+from socket import socket, AF_INET, SOCK_DGRAM
 import time
 import argparse
 import requests
+from apscheduler.schedulers.background import BackgroundScheduler
+
+ID = 'smokedetector_id'
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(26, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -10,12 +14,19 @@ patterns = {'alarm': [0.5, 0.5, 0.5, 0.5, 0.5],
             'regular': [33.75, 33.75, 33.75]}
 PATTERN_TOLERANCE = 0.1
 MIN_PAUSE_BETWEEN_INTERRUPTS = 0.1
-HUB_URL = 'http://pihub.local/messages'
+BROADCAST_PREFIX = 'SMS-Server:'
+BROADCAST_PORT = 44566
+
+hub_url = None
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--debug', type=str2bool, nargs='?', const=True,
                     default=False, help='Prints log messages to the console.')
 args = parser.parse_args()
+
+
+scheduler = BackgroundScheduler()
+scheduler.start()
 
 
 def str2bool(v):
@@ -32,13 +43,32 @@ def str2bool(v):
 def alarm_callback():
     if args.debug:
         print('ALARM!!!')
-    requests.post(HUB_URL + '/smokedetector', data='alarm')
+    requests.post(hub_url + '/fire/alarm/' + ID)
 
 
 def regular_callback():
     if args.debug:
         print('Batterie ist fast leer, bitte wechseln.')
-    requests.post(HUB_URL + '/smokedetector', data='ok')
+    requests.post(hub_url + '/fire/battery/' + ID)
+
+
+def heartbeat():
+    if args.debug:
+        print('Heartbeat')
+    requests.post(hub_url + '/fire/heartbeat/' + ID)
+
+
+def configure_hub():
+    s = socket(AF_INET, SOCK_DGRAM)  # create UDP socket
+    s.bind(('', BROADCAST_PORT))
+    while hub_url == None:
+        data, addr = s.recvfrom(1024)  # wait for a packet
+        if data.startswith(BROADCAST_PREFIX):
+            print("got service announcement from" +
+                  str(data[len(BROADCAST_PREFIX):]))
+            print(addr)
+    requests.post(hub_url + '/fire/register/' + ID)
+    scheduler.add_job(heartbeat, 'interval', minutes=5, id='heartbeat')
 
 
 callbacks = {'alarm': alarm_callback, 'regular': regular_callback}
@@ -74,6 +104,10 @@ def callback(arg):
         check_for_pattern(buffer)
 
 
+configure_hub()
+
 GPIO.add_event_detect(26, GPIO.FALLING)
 GPIO.add_event_callback(26, callback)
+
 input()
+requests.delete(hub_url + '/fire/unregister/' + ID)
